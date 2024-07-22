@@ -30,7 +30,6 @@ function indent() {
     *)      sed -u "$c";;
   esac
 }
-
 topic "Installing Chrome for Testing"
 
 INSTALL_DIR="$BUILD_DIR/.chrome-for-testing"
@@ -38,7 +37,7 @@ mkdir -p "$INSTALL_DIR"
 
 # Detect if the old config var is still used
 if [ -f "$ENV_DIR/CHROMEDRIVER_VERSION" ]; then
-  error "This buildpack no longer supports CHROMEDRIVER_VERSION config var and must be removed to continue, because this buildpack now installs compatible versions of Chrome & Chromedriver. GOOGLE_CHROME_CHANNEL can be used to set Stable (default), Beta, Dev, or Canary."
+  error "This buildpack no longer supports CHROMEDRIVER_VERSION config var and must be removed to continue, because this buildpack now installs compatible versions of Chrome & Chromedriver. Install version of major releases after 113 with CHROME_MAJOR_VERSION (113, 114, 115, etc). GOOGLE_CHROME_MAJOR_VERSION can be used to set Stable (default), Beta, Dev, or Canary."
 fi
 
 # Detect if Chrome is already installed
@@ -46,17 +45,27 @@ if which chrome; then
   error "Chrome is already installed. This buildpack now installs a compatible version of Chrome. Please, remove the other Chrome installation. Chrome may have been installed by another buildpack (such as heroku/heroku-buildpack-google-chrome buildpack), which should no longer be used with this buildpack."
 fi
 
-# Detect requested channel or default to stable
-if [ -f "$ENV_DIR/GOOGLE_CHROME_CHANNEL" ]; then
-  channel=$(cat "$ENV_DIR/GOOGLE_CHROME_CHANNEL")
-  echo "Using env var GOOGLE_CHROME_CHANNEL=$channel" | indent
+# Detect if a major version other than stable, beta, dev or canary.
+if [ -f "$ENV_DIR/GOOGLE_CHROME_MAJOR_VERSION" ]; then
+  milestone=$(cat $ENV_DIR/GOOGLE_CHROME_MAJOR_VERSION)
+  echo "Using env var GOOGLE_CHROME_MAJOR_VERSION=$milestone" | indent
+  VERSION=`curl --silent --show-error --fail --retry 3 --retry-connrefused --connect-timeout 10 "https://googlechromelabs.github.io/chrome-for-testing/latest-versions-per-milestone.json" | jq -r --arg milestone $milestone '.milestones[] | select(.milestone == $milestone).version'`
+  echo "Resolved $milestone to version $VERSION" | indent
 else
-  channel=stable
+  # Detect requested channel or default to stable
+  if [ -f "$ENV_DIR/GOOGLE_CHROME_CHANNEL" ]; then
+    channel=$(cat "$ENV_DIR/GOOGLE_CHROME_CHANNEL")
+    echo "Using env var GOOGLE_CHROME_CHANNEL=$channel" | indent
+  else
+    channel=stable
+  fi
+
+  # The current version endpoint requires ALL CAPS.
+  CHANNEL="$(echo -n "$channel" | awk '{ print toupper($0) }')"
+  VERSION="$(curl --silent --show-error --fail --retry 3 --retry-connrefused --connect-timeout 10 "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_$CHANNEL")"
+  echo "Resolved $CHANNEL version $VERSION" | indent
 fi
-# The current version endpoint requires ALL CAPS.
-CHANNEL="$(echo -n "$channel" | awk '{ print toupper($0) }')"
-VERSION="$(curl --silent --show-error --fail --retry 3 --retry-connrefused --connect-timeout 10 "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_$CHANNEL")"
-echo "Resolved $CHANNEL version $VERSION" | indent
+
 
 echo "Downloading Chrome" | indent
 ZIP_URL="https://storage.googleapis.com/chrome-for-testing-public/$VERSION/linux64/chrome-linux64.zip"
